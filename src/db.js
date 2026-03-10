@@ -1,27 +1,18 @@
-// ============================================================
-//  db.js — Operaciones Firestore
-//
-//  Estructura:
-//  /propietarios/{uid}/config/perfil
-//  /propietarios/{uid}/turnos/{turnoId}
-//  /propietarios/{uid}/bloqueos/{fecha}   ← fechas bloqueadas
-//  /propietarios/{uid}/clientes/{id}      ← registro automático al sacar turno
-// ============================================================
-
 import {
   doc, collection, getDocs, getDoc,
   setDoc, deleteDoc, onSnapshot, query, where,
 } from "firebase/firestore";
 import { db } from "./firebase.js";
 
-const BASE = (uid) => `propietarios/${uid}`;
+// Estructura:
+// /propietarios/{uid}           ← doc raíz, guarda { config }
+// /propietarios/{uid}/turnos/{id}
+// /propietarios/{uid}/bloqueos/{fecha}
 
-// ── Config del propietario ────────────────────────────────────
+// ── Config ───────────────────────────────────────────────────
 export async function getConfig(uid) {
-  const snap = await getDoc(doc(db, BASE(uid), "config", "perfil", "data"));
-  // fallback: buscar en colección simple
-  const snap2 = await getDoc(doc(db, "propietarios", uid));
-  return snap2.exists() ? snap2.data()?.config || null : null;
+  const snap = await getDoc(doc(db, "propietarios", uid));
+  return snap.exists() ? snap.data()?.config || null : null;
 }
 export async function saveConfig(uid, config) {
   await setDoc(doc(db, "propietarios", uid), { config }, { merge: true });
@@ -44,9 +35,7 @@ export function listenTurnos(uid, cb) {
   });
 }
 
-// ── Turnos públicos: reservar sin auth ────────────────────────
-// El cliente no está logueado, pero puede escribir en esta colección
-// gracias a las reglas de Firestore (ver README)
+// ── Turnos públicos (sin auth) ────────────────────────────────
 export async function reservarTurno(uid, turno) {
   await setDoc(doc(db, "propietarios", uid, "turnos", turno.id), turno);
 }
@@ -56,22 +45,21 @@ export async function getTurnosByFecha(uid, fecha) {
   );
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
-// Cancela turno por código (sin auth)
 export async function cancelarPorCodigo(uid, turnoId, codigo) {
   const ref = doc(db, "propietarios", uid, "turnos", turnoId);
   const snap = await getDoc(ref);
   if (!snap.exists()) return { ok: false, msg: "Turno no encontrado." };
   const data = snap.data();
   if (data.cancelCode !== codigo) return { ok: false, msg: "Código incorrecto." };
-  if (data.estado === "cancelado")  return { ok: false, msg: "Este turno ya fue cancelado." };
+  if (data.estado === "cancelado") return { ok: false, msg: "Este turno ya fue cancelado." };
   await setDoc(ref, { ...data, estado: "cancelado" });
   return { ok: true };
 }
 
-// ── Bloqueos de fecha ─────────────────────────────────────────
+// ── Bloqueos ──────────────────────────────────────────────────
 export async function getBloqueos(uid) {
   const snap = await getDocs(collection(db, "propietarios", uid, "bloqueos"));
-  return snap.docs.map(d => d.id); // ids son las fechas "YYYY-MM-DD"
+  return snap.docs.map(d => d.id);
 }
 export async function bloquearFecha(uid, fecha) {
   await setDoc(doc(db, "propietarios", uid, "bloqueos", fecha), { fecha });
@@ -85,11 +73,10 @@ export function listenBloqueos(uid, cb) {
   });
 }
 
-// ── Perfil público (sin auth, para la vista del cliente) ──────
+// ── Perfil público (sin auth) ─────────────────────────────────
 export async function getPerfilPublico(uid) {
   const snap = await getDoc(doc(db, "propietarios", uid));
-  if (!snap.exists()) return null;
-  return snap.data()?.config || null;
+  return snap.exists() ? snap.data()?.config || null : null;
 }
 export async function getTurnosPublicos(uid, fecha) {
   return getTurnosByFecha(uid, fecha);
