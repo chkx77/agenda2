@@ -13,12 +13,12 @@ import { getAuth }       from "firebase/auth";
 import { getFirestore }  from "firebase/firestore";
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyD-9tSrke72...",
-  authDomain:        "mi-agenda-12345.firebaseapp.com",
-  projectId:         "mi-agenda-12345",
-  storageBucket:     "mi-agenda-12345.appspot.com",
-  messagingSenderId: "123456789012",
-  appId:             "1:123456789012:web:abc123def456",
+  apiKey: "AIzaSyD9sFYYLqkYA3zkNN8mgnW4SAZtlPpfvm4",
+  authDomain: "agendan2.firebaseapp.com",
+  projectId: "agendan2",
+  storageBucket: "agendan2.firebasestorage.app",
+  messagingSenderId: "592707981924",
+  appId: "1:592707981924:web:421bf88b9cc5086f968571"
 };
 
 const app = initializeApp(firebaseConfig);
