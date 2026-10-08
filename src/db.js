@@ -3,6 +3,12 @@ import {
   setDoc, deleteDoc, onSnapshot, query, where,
 } from "firebase/firestore";
 import { db } from "./firebase.js";
+import { getFunctions, httpsCallable } from 'firebase/functions';
+const functions = getFunctions(db.app, 'us-central1');
+async function call(name, data) {
+  if (!import.meta.env.VITE_APP_CHECK_SITE_KEY) throw new Error('La agenda necesita completar la configuración antes de aceptar turnos.');
+  const result = await httpsCallable(functions, name)(data); return result.data;
+}
 
 // Estructura:
 // /propietarios/{uid}           ← doc raíz, guarda { config }
@@ -24,10 +30,10 @@ export async function getTurnos(uid) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 export async function saveTurno(uid, turno) {
-  await setDoc(doc(db, "propietarios", uid, "turnos", turno.id), turno);
+  return call("guardarTurno", { propietarioId: uid, turno });
 }
 export async function deleteTurno(uid, id) {
-  await deleteDoc(doc(db, "propietarios", uid, "turnos", id));
+  return call("eliminarTurno", { propietarioId: uid, turnoId: id });
 }
 export function listenTurnos(uid, cb) {
   return onSnapshot(collection(db, "propietarios", uid, "turnos"), snap => {
@@ -37,7 +43,7 @@ export function listenTurnos(uid, cb) {
 
 // ── Turnos públicos (sin auth) ────────────────────────────────
 export async function reservarTurno(uid, turno) {
-  await setDoc(doc(db, "propietarios", uid, "turnos", turno.id), turno);
+  return call('reservarTurno', {propietarioId:uid, turno});
 }
 export async function getTurnosByFecha(uid, fecha) {
   const snap = await getDocs(
@@ -46,14 +52,7 @@ export async function getTurnosByFecha(uid, fecha) {
   return snap.docs.map(d => ({ id: d.id, ...d.data() }));
 }
 export async function cancelarPorCodigo(uid, turnoId, codigo) {
-  const ref = doc(db, "propietarios", uid, "turnos", turnoId);
-  const snap = await getDoc(ref);
-  if (!snap.exists()) return { ok: false, msg: "Turno no encontrado." };
-  const data = snap.data();
-  if (data.cancelCode !== codigo) return { ok: false, msg: "Código incorrecto." };
-  if (data.estado === "cancelado") return { ok: false, msg: "Este turno ya fue cancelado." };
-  await setDoc(ref, { ...data, estado: "cancelado" });
-  return { ok: true };
+  return call('cancelarTurno', {propietarioId:uid, turnoId, codigo});
 }
 
 // ── Bloqueos ──────────────────────────────────────────────────
@@ -79,7 +78,8 @@ export async function getPerfilPublico(uid) {
   return snap.exists() ? snap.data()?.config || null : null;
 }
 export async function getTurnosPublicos(uid, fecha) {
-  return getTurnosByFecha(uid, fecha);
+  const snapshot = await getDocs(query(collection(db, 'propietarios', uid, 'ocupados'), where('fecha', '==', fecha)));
+  return snapshot.docs.map(d => ({id:d.id, ...d.data()}));
 }
 export async function getBloqueosFecha(uid) {
   return getBloqueos(uid);
