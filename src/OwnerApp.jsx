@@ -39,7 +39,9 @@ function TurnoForm({ turno, config, onSave, onClose, defaultDate }) {
   });
   const s = (k, v) => sf(p => ({ ...p, [k]: v }));
 
-  const handleSave = () => {
+  const [saveError, setSaveError] = useState("");
+  const [saving, setSaving] = useState(false);
+  const handleSave = async () => {
     if (!f.clienteNombre.trim() || !f.fecha || !f.hora) return;
     const t = {
       ...f, id: turno?.id || uid(),
@@ -47,7 +49,8 @@ function TurnoForm({ turno, config, onSave, onClose, defaultDate }) {
       creadoEn: turno?.creadoEn || todayStr(),
       cancelCode: turno?.cancelCode || cancelCode(),
     };
-    onSave(t); onClose();
+    setSaving(true); setSaveError("");
+    try { await onSave(t); onClose(); } catch(e) { setSaveError(e.message || "No se pudo guardar el turno."); } finally { setSaving(false); }
   };
 
   return (
@@ -81,10 +84,11 @@ function TurnoForm({ turno, config, onSave, onClose, defaultDate }) {
         <input type="checkbox" checked={f.pagado} onChange={e=>s("pagado",e.target.checked)} style={{ width:15, height:15, accentColor:T.teal }}/>
         <label style={{ fontSize:"0.83rem", fontWeight:600, cursor:"pointer" }}>Cobrado</label>
       </div>
+      {saveError && <p role="alert" style={{color:T.red}}>{saveError}</p>}
       <Fld label="Notas internas"><textarea style={{ ...inp, resize:"vertical", minHeight:"60px" }} value={f.notas} onChange={e=>s("notas",e.target.value)} placeholder="Recordatorios..."/></Fld>
       <div style={{ display:"flex", gap:"0.6rem", justifyContent:"flex-end" }}>
         <Btn variant="secondary" onClick={onClose}>Cancelar</Btn>
-        <Btn onClick={handleSave} icon="save">Guardar</Btn>
+        <Btn onClick={handleSave} loading={saving} icon="save">Guardar</Btn>
       </div>
     </div>
   );
@@ -445,10 +449,10 @@ export default function OwnerApp({ user }) {
     await dbSaveTurno(uid_owner, t);
     showToast("Turno guardado");
   };
-  const removeTurno = async (id) => { await dbDeleteTurno(uid_owner, id); showToast("Turno eliminado","info"); };
+  const removeTurno = async (id) => { try { await dbDeleteTurno(uid_owner, id); showToast("Turno eliminado","info"); } catch(e) { showToast(e.message || "No se pudo eliminar", "error"); } };
   const changeEstado = async (id, estado) => {
     const t = turnos.find(x=>x.id===id);
-    if (t) await dbSaveTurno(uid_owner, {...t, estado});
+    try { if (t) await dbSaveTurno(uid_owner, {...t, estado}); } catch(e) { showToast(e.message || "No se pudo actualizar", "error"); }
   };
   const toggleBloqueo = async (fecha) => {
     if (bloqueos.includes(fecha)) { await desbloquearFecha(uid_owner, fecha); showToast("Fecha desbloqueada","info"); }

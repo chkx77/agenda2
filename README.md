@@ -1,125 +1,60 @@
-# Agenda Pro — Sistema completo (propietario + clientes)
+# Agenda Pro
 
-## Cómo funciona
+Aplicación para administrar disponibilidad y turnos. El propietario inicia sesión y comparte `/turno/{UID}` con sus clientes.
 
-| Ruta | Quién la usa | Auth requerida |
-|------|-------------|----------------|
-| `/` | Propietario | Sí (email/pass) |
-| `/turno/{uid}` | Clientes | No |
+## Tecnologías
+React 18, Vite, Firebase Authentication, Firestore y Cloud Functions.
 
-El propietario se loguea, configura su disponibilidad y comparte
-el link `/turno/{su-uid}` con sus clientes. Los clientes entran,
-eligen fecha y hora, y dejan nombre + teléfono. Sin registro.
+## Estado
+Actualización de privacidad y reservas preparada para un despliegue coordinado. La interfaz nueva requiere Cloud Functions y App Check configurados; subir el código a GitHub por sí solo no activa el servicio.
 
----
+## Diseño y privacidad
+- `propietarios/{UID}`: contiene únicamente configuración pública.
+- `turnos`: documentos privados; solo el propietario puede leerlos.
+- `ocupados`: publica solo fecha, hora y duración, sin nombres, teléfonos ni códigos.
+- `locks`: coordinación interna por fecha.
+- Reservar, modificar, cancelar y eliminar usan funciones del servidor.
+- El servidor valida disponibilidad, fechas, bloqueos y solapamientos en una transacción.
+- El código de cancelación se genera con aleatoriedad criptográfica y se devuelve una sola vez al cliente. Se guarda su hash, no el código.
 
-## Setup Firebase (10 min)
+## Desarrollo
+Node.js 22, npm, Firebase CLI y Java para el emulador de Firestore.
 
-### 1. Crear proyecto
-- https://console.firebase.google.com → Agregar proyecto → desactivar Analytics
-
-### 2. Registrar app web
-- Panel → ícono `</>` → copiar `firebaseConfig` → pegarlo en `src/firebase.js`
-
-### 3. Authentication
-- Authentication → Comenzar → Email/Contraseña → Habilitar → Guardar
-
-### 4. Firestore
-- Firestore Database → Crear base de datos → Modo producción → us-east1
-
-### 5. Reglas de seguridad (IMPORTANTE)
-Firestore → Reglas → reemplazar todo con esto y publicar:
-
-```
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-
-    // El propietario puede leer/escribir TODO su espacio
-    match /propietarios/{uid}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-    }
-
-    // Los clientes pueden LEER config y turnos del propietario (para ver disponibilidad)
-    match /propietarios/{uid} {
-      allow read: if true;
-    }
-    match /propietarios/{uid}/turnos/{turnoId} {
-      allow read: if true;
-      // Solo pueden CREAR turnos nuevos (no modificar ni eliminar los ajenos)
-      allow create: if request.auth == null
-                    && request.resource.data.keys().hasAll(['clienteNombre','clienteTel','fecha','hora','estado'])
-                    && request.resource.data.estado == 'pendiente';
-    }
-    match /propietarios/{uid}/bloqueos/{fecha} {
-      allow read: if true;
-    }
-  }
-}
-```
-
----
-
-## Correr localmente
-
-```bash
+```sh
 npm install
+npm --prefix functions install
+npm test
 npm run dev
-# → http://localhost:3000         (panel propietario)
-# → http://localhost:3000/turno/{uid}  (vista cliente)
-```
-
----
-
-## Deploy en Vercel
-
-```bash
-# Opción 1: desde GitHub (recomendado)
-# Subir a repo → vercel.com → New Project → importar → Deploy
-
-# Opción 2: CLI
-npm install -g vercel
 npm run build
-vercel --prod
 ```
 
-El archivo `vercel.json` ya está configurado para que las rutas
-`/turno/:uid` no den 404.
+La configuración web existente está en `src/firebase.js`. Para otro proyecto, reemplazar sus valores por la configuración web de ese proyecto. No usar claves Admin en el frontend.
 
----
+## Activación
+1. Trabajar primero sobre un proyecto de pruebas con datos ficticios.
+2. Activar Authentication email/contraseña y Firestore.
+3. Registrar la aplicación web en Firebase App Check con reCAPTCHA v3 y su dominio. Copiar la clave pública a `VITE_APP_CHECK_SITE_KEY` en el entorno de Vercel.
+4. Verificar requisitos y facturación del proyecto para Cloud Functions. No se habilita facturación automáticamente.
+5. Desde un entorno autenticado con Firebase CLI, desplegar las funciones y las reglas de este repositorio en el proyecto elegido.
+6. Compilar/desplegar la interfaz con la variable de App Check.
+7. Probar reserva, cancelación con código, sesión del propietario y dos reservas simultáneas del mismo horario.
 
-## Flujo del propietario
+Las funciones se despliegan en `us-central1`; cliente y servidor deben coincidir. La validación pública de fechas usa America/Argentina/Buenos_Aires.
 
-1. Entra a `tu-dominio.com` → se registra (primera vez) o loguea
-2. Va a **Configuración** → define horarios, duración, días hábiles
-3. Copia el **Link público** y lo comparte (WhatsApp, Instagram, etc.)
-4. En la agenda ve todos los turnos en tiempo real
-5. Puede bloquear fechas desde la vista Mes (ícono del candado)
-6. Puede agregar turnos manualmente, cambiar estado, marcar como cobrado
+## Migración de una instalación existente
+No aplicar esta actualización directamente sobre datos reales sin respaldo. El esquema previo puede guardar códigos en claro y no tiene ocupados. La migración necesita generar códigos nuevos, guardarlos como hash y producir documentos públicos de disponibilidad, preservando los turnos privados. Los nuevos códigos deben entregarse a sus titulares por un canal autorizado. Los códigos anteriores no son compatibles. Revisar también configuración antigua y eliminar datos privados del documento público raíz.
 
-## Flujo del cliente
+## Límites
+Pruebas locales de dominio no reemplazan pruebas de integración con los emuladores ni una validación de App Check en el dominio publicado. Cambiar la duración/horarios después de crear turnos requiere revisar los turnos existentes. No se verificó una implementación en clientes.
 
-1. Recibe el link → abre en cualquier dispositivo
-2. Ve el calendario con días disponibles resaltados
-3. Elige fecha → ve los horarios disponibles de ese día
-4. Elige hora → pone nombre y teléfono → confirma
-5. Recibe un **código de cancelación** (6 letras) — debe guardarlo
-6. Para cancelar: botón "Cancelar turno" → ingresa ID del turno + código
+## Soporte
+Si aparece un error de App Check, revisar clave pública, dominio y registro de la aplicación. Si el horario se ocupó mientras completabas el formulario, volver a consultar disponibilidad. No abrir la colección privada para resolver problemas de permisos.
 
----
+## Presentación profesional
+Proyecto personal o académico de Matías Romero. El código y la documentación describen su alcance; no se atribuyen clientes, métricas ni experiencia de producción no verificados.
 
-## Archivos del proyecto
+## Comprobaciones
+El workflow de GitHub Actions instala dependencias y compila el proyecto. El resultado del workflow, y no la existencia de este apartado, determina si la verificación pasó.
 
-```
-src/
-├── main.jsx        # Entry point
-├── Root.jsx        # Router: /turno/:uid vs panel propietario
-├── firebase.js     # ← EDITÁ ESTE con tu config
-├── db.js           # Todas las ops de Firestore
-├── helpers.js      # Constantes, utilidades, fechas
-├── ui.jsx          # Componentes compartidos (Btn, Modal, icons...)
-├── AuthScreen.jsx  # Login/registro del propietario
-├── OwnerApp.jsx    # Panel completo del propietario
-└── BookingView.jsx # Vista pública para clientes
-vercel.json         # Routing SPA para Vercel
-```
+## Datos para demostraciones
+Usar datos ficticios. No subir bases de datos, contraseñas, claves de servicio ni exportaciones con datos personales.

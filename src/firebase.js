@@ -10,6 +10,7 @@
 
 import { initializeApp } from "firebase/app";
 import { getAuth }       from "firebase/auth";
+import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
 import { getFirestore }  from "firebase/firestore";
 
 const firebaseConfig = {
@@ -22,5 +23,8 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
+if (import.meta.env.VITE_APP_CHECK_SITE_KEY) {
+  initializeAppCheck(app, { provider: new ReCaptchaV3Provider(import.meta.env.VITE_APP_CHECK_SITE_KEY), isTokenAutoRefreshEnabled: true });
+}
 export const auth = getAuth(app);
 export const db   = getFirestore(app);

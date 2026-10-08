@@ -1,0 +1,1 @@
+{"firestore":{"rules":"firestore.rules"},"functions":[{"source":"functions","codebase":"agenda-pro"}],"emulators":{"functions":{"port":5001},"firestore":{"port":8080},"auth":{"port":9099}}}

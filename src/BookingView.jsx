@@ -197,9 +197,11 @@ function CancelarTurno({ propietarioId, onClose }) {
   const handleCancelar = async () => {
     if (!turnoId.trim() || !codigo.trim()) { setMsg({ ok:false, msg:"Completá ambos campos." }); return; }
     setLoading(true);
-    const res = await cancelarPorCodigo(propietarioId, turnoId.trim(), codigo.trim().toUpperCase());
-    setMsg(res);
-    setLoading(false);
+    try {
+      const res = await cancelarPorCodigo(propietarioId, turnoId.trim(), codigo.trim().toUpperCase());
+      setMsg(res);
+    } catch(e) { setMsg({ok:false,msg:e.message || 'No se pudo cancelar. Intentá nuevamente.'}); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -211,7 +213,7 @@ function CancelarTurno({ propietarioId, onClose }) {
         <input style={inp} value={turnoId} onChange={e => setTurnoId(e.target.value)} placeholder="ej: abc123xyz"/>
       </Fld>
       <Fld label="Código de cancelación">
-        <input style={inp} value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="ej: A1B2C3" style={{...inp, textTransform:"uppercase"}}/>
+        <input style={inp} value={codigo} onChange={e => setCodigo(e.target.value)} placeholder="Código recibido al reservar"/>
       </Fld>
 
       {msg && (
@@ -246,17 +248,20 @@ export default function BookingView({ propietarioId }) {
   const [turnosPorFecha, setTurnosPorFecha] = useState({});
   const [turnoCreado, setTurnoCreado] = useState(null);
   const [saving,      setSaving]      = useState(false);
+  const [error, setError] = useState("");
   const [modalCancelar, setModalCancelar] = useState(false);
 
   // Cargar perfil y bloqueos
   useEffect(() => {
     (async () => {
+      try {
       const p = await getPerfilPublico(propietarioId);
       if (!p) { setNoEncontrado(true); setCargando(false); return; }
       setPerfil(p);
       const b = await getBloqueosFecha(propietarioId);
       setBloqueos(b);
       setCargando(false);
+      } catch(e) { setError(e.message || "No se pudo cargar la agenda."); setCargando(false); }
     })();
   }, [propietarioId]);
 
@@ -275,16 +280,19 @@ export default function BookingView({ propietarioId }) {
         if (activos.length) counts[fecha] = activos.length;
       }));
       setTurnosPorFecha(counts);
-    })();
+    })().catch(e => setError(e.message || "No se pudo consultar la disponibilidad."));
   }, [yearMonth, perfil, propietarioId]);
 
   // Al seleccionar fecha, cargar slots ocupados
   const handleSelectFecha = async (fecha) => {
+    setError("");
+    try {
     setFechaSel(fecha);
     const ts = await getTurnosPublicos(propietarioId, fecha);
     const ocupados = ts.filter(t => t.estado !== "cancelado").map(t => t.hora);
     setSlotsOcupados(ocupados);
     setPaso("horario");
+    } catch(e) { setError(e.message || "No se pudo consultar el horario."); }
   };
 
   const handleSelectHora = (hora) => {
@@ -293,7 +301,8 @@ export default function BookingView({ propietarioId }) {
   };
 
   const handleConfirmar = async ({ nombre, tel, motivo }) => {
-    setSaving(true);
+    if (saving) return;
+    setSaving(true); setError("");
     const id = uid();
     const code = cancelCode();
     const turno = {
@@ -306,10 +315,12 @@ export default function BookingView({ propietarioId }) {
       creadoEn: todayStr(),
       propietarioId,
     };
-    await reservarTurno(propietarioId, turno);
-    setTurnoCreado(turno);
-    setPaso("confirmado");
-    setSaving(false);
+    try {
+      const saved = await reservarTurno(propietarioId, turno);
+      setTurnoCreado({...turno, ...saved});
+      setPaso('confirmado');
+    } catch(e) { setError(e.message || 'No se pudo reservar. Revisá la disponibilidad e intentá nuevamente.'); setPaso('calendario'); }
+    finally { setSaving(false); }
   };
 
   const changeMonth = (dir) => {
@@ -325,6 +336,7 @@ export default function BookingView({ propietarioId }) {
   };
 
   // ── Render guards ──
+  if (error && !perfil) return <p role="alert" style={{padding:"2rem"}}>{error}</p>;
   if (cargando) return (
     <div style={{ minHeight:"100vh", background:T.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"'Archivo Black',sans-serif" }}>
       <style>{GLOBAL_STYLES}</style>
@@ -447,6 +459,7 @@ export default function BookingView({ propietarioId }) {
           </div>
         </div>
 
+        {error && <p role="alert" style={{padding:"1rem",color:T.red}}>{error}</p>}
         {/* ID del turno para cancelación — mostrado en paso confirmado */}
         {paso === "confirmado" && turnoCreado && (
           <div style={{ marginTop:"1rem", background:T.bgDark, border:`2px solid ${T.border}`, padding:"0.75rem 1rem" }}>

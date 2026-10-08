@@ -72,6 +72,8 @@ export function currentYearMonth() {
 
 /** Genera slots de tiempo cada `duracion` minutos entre horaInicio y horaFin */
 export function timeSlots(horaInicio = "08:00", horaFin = "20:00", duracion = 60) {
+  duracion = Number(duracion);
+  if (!Number.isFinite(duracion) || duracion <= 0) return [];
   const slots = [];
   const [sh, sm] = horaInicio.split(":").map(Number);
   const [eh, em] = horaFin.split(":").map(Number);
@@ -90,7 +92,7 @@ export function initials(name) {
 
 // Genera código corto de cancelación (6 chars)
 export function cancelCode() {
-  return Math.random().toString(36).slice(2,8).toUpperCase();
+  return crypto.randomUUID().replace(/-/g, "").toUpperCase();
 }
 
 // CSV
