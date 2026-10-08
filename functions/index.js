@@ -18,17 +18,17 @@ export async function persist(uid, input, publicBooking) {
   const code=randomBytes(16).toString('hex').toUpperCase();
   await db.runTransaction(async tx => {
     const profile=await tx.get(parent);
-    if(!profile.exists() || !profile.data().config) throw new HttpsError('not-found','Agenda no encontrada.');
+    if(!profile.exists || !profile.data().config) throw new HttpsError('not-found','Agenda no encontrada.');
     const turn=validateTurn(input,profile.data().config,publicBooking ? today() : '0000-00-00');
     const previous=await tx.get(reference);
-    if(publicBooking && previous.exists()) throw new HttpsError('already-exists','Turno ya registrado.');
-    const dayRefs=[...new Set([turn.fecha,previous.exists()?previous.data().fecha:turn.fecha])].map(day=>parent.collection('locks').doc(day));
+    if(publicBooking && previous.exists) throw new HttpsError('already-exists','Turno ya registrado.');
+    const dayRefs=[...new Set([turn.fecha,previous.exists?previous.data().fecha:turn.fecha])].map(day=>parent.collection('locks').doc(day));
     for(const lock of dayRefs) await tx.get(lock);
     const block=await tx.get(parent.collection('bloqueos').doc(turn.fecha));
-    if(block.exists() && turn.estado !== 'cancelado') throw new HttpsError('failed-precondition','La fecha está bloqueada.');
+    if(block.exists && turn.estado !== 'cancelado') throw new HttpsError('failed-precondition','La fecha está bloqueada.');
     const dayTurns=await tx.get(parent.collection('turnos').where('fecha','==',turn.fecha));
     if(dayTurns.docs.some(d=>d.id!==reference.id && overlaps(turn,d.data()))) throw new HttpsError('already-exists','El horario acaba de ser ocupado. Elegí otro.');
-    const previousData=previous.exists()?previous.data():{};
+    const previousData=previous.exists?previous.data():{};
     // Explicitly select fields: never trust client-supplied cancellation codes or private metadata.
     const saved={id:reference.id,fecha:turn.fecha,hora:turn.hora,duracion:turn.duracion,
       clienteNombre:turn.clienteNombre,clienteTel:turn.clienteTel,
@@ -60,7 +60,7 @@ export const cancelarTurno=onCall(options,async request=> {
     const parent=root(propietarioId), ref=parent.collection('turnos').doc(safeId(turnoId));
     await db.runTransaction(async tx=> {
       const turn=await tx.get(ref);
-      if(!turn.exists()) throw new HttpsError('not-found','Turno o código incorrectos.');
+      if(!turn.exists) throw new HttpsError('not-found','Turno o código incorrectos.');
       const stored=turn.data().cancelHash;
       if(typeof stored!=='string' || stored.length!==64 || !timingSafeEqual(Buffer.from(stored,'hex'),Buffer.from(hash(codigo),'hex'))) throw new HttpsError('permission-denied','Turno o código incorrectos.');
       const lock=parent.collection('locks').doc(turn.data().fecha); await tx.get(lock);
@@ -75,10 +75,11 @@ export const eliminarTurno=onCall(options,async request=> {
     const {propietarioId,turnoId}=request.data||{}; safeId(propietarioId); owner(request,propietarioId);
     const parent=root(propietarioId), ref=parent.collection('turnos').doc(safeId(turnoId));
     await db.runTransaction(async tx=> {
-      const turn=await tx.get(ref); if(!turn.exists()) return;
+      const turn=await tx.get(ref); if(!turn.exists) return;
       const lock=parent.collection('locks').doc(turn.data().fecha); await tx.get(lock);
       tx.delete(ref); tx.delete(parent.collection('ocupados').doc(turnoId)); tx.set(lock,{updatedAt:FieldValue.serverTimestamp()});
     });
     return {ok:true};
   } catch(error) { fail(error); }
 });
+
